@@ -11,6 +11,7 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage){
 
   window.io = new IO(new gremlin(),{}, function onReady(){
     io.gremlin.addConnection("ws://" + location.hostname, function(id){
+      console.log("add connection calback", id)
       //var announcement = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name("!/" + roomName + "/" + window.handle));
       io.gremlin.addRegisteredPrefix(roomName, id)
                 .registerPrefix(roomName, id)

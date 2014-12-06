@@ -18,11 +18,12 @@
     <link rel="stylesheet" href="css/screen.css" type="text/stylesheet" />
 
     <script src="http://code.jquery.com/jquery-1.8.2.min.js"></script>
-    <script src="js/jquery.mobile-1.2.0.min.js"></script>
+    <script src="http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.js"></script>
     <script src="http://cdn.pubnub.com/pubnub-3.5.1.js"></script>
-    <script src="js/test.js"></script>
+
   </head>
   <body>
+    <script src="js/test.js"></script>
     <!-- Home Page -->
     <div data-role="page" id="homePage" data-theme="c" class="type-home">
 
@@ -89,38 +90,22 @@
 
 
 
+        <div class="content-secondary" style"">
 
-       <div class="content-secondary" style""="">
 
+          <div id= "userList" class="" style="height:50%; background: rgb(223, 223, 223); ">
 
-          <div id="userList" class="" style="height:50%; background: rgb(223, 223, 223); "><li id="lifeinchords" data-username="lifeinchords">lifeinchords</li><li id="Ryan" data-username="Ryan">Ryan</li><li id="Bob" data-username="Bob">Bob</li></div>
-
-          <div id="fileBox" style="height:50%; background: rgb(187, 187, 187);">
-              <!-- put bottom stuff here-->
-
-          <!-- SD: -->
-          <div class="file">
-
-            <a class="button" download="rep.png" href="blob:http%3A//128.97.151.143%3A8000/5992e547-a469-40b3-8c16-e0b3a0a0f174">
-            <img src="ndnio_files/icon_11405-copy.gif" alt="Smiley face" height="42" width="42">
-            Download
-            </a>
-
-            <span style="margin: 0 0 0 10px;">rep.png</span>
-
-            <div class="filesize">
-              <span class="number">143</span>
-              <span class="unit">kb</span>
-            </div>
-
-            </div>
+              <!-- put top stuff here-->
           </div>
 
-          <ul data-role="listview" id="userList" data-theme="c" class="ui-listview">
+          <div id= "fileBox" style="height:50%; background: rgb(187, 187, 187);">
+              <!-- put bottom stuff here-->
+          </div>
+
+
+          <ul data-role="listview" id="userList" data-theme="c">
 
           </ul>
-
-
         </div>
       </div><!-- /content -->
 
