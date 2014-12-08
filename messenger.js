@@ -2,7 +2,11 @@ var ndnFunc = require("./src.js")
 
 var dropkick = require('dropkick');
 
-
+var createLoading = function(){
+  var ret = document.createElement("img");
+  ret.src = "loader.gif"
+  return $(ret);
+}
 
 
 $(document).ready(function () {
@@ -99,31 +103,46 @@ window.handle = username
     });
   };
 
-var makeSaveButton = function(fileName, file){
-  if(file !== null){
+var makeSaveButton = function(fileName, file, id, button){
+  if(file !== null || undefined){
     var a = document.createElement("a")
     a.download = fileName;
-    a.innerText = fileName
     a.href = URL.createObjectURL(file);
-    $("#"+fileName.split(".")[0]).replaceWith(a);
-    $("#"+fileName.split(".")[0] + "DL").remove()
+    button.innerText = "Save";
+    button.onclick = function(){
+      a.click()
+    }
+    //$("#"+id + "DL").remove()
   }console.log(a, file, fileName)
   //put link somewhere
 }
 
-var makeDownloadButton = function(fileName){
+var makeDownloadButton = function(slug, extension){
   var button = document.createElement("button")
-  button.id = fileName.split(".")[0] + "DL"
+  , fileName = slug  +"."+ extension
+  , id = Date.now();
+  button.id = slug + "DL"
   button.innerText = "download"
   button.onclick = function(){
-    ndnFunc.getFile(fileName, function(err,file){
+    var loading = createLoading();
+    $(button).append(loading);
+    button.onclick = function(){}
+    ndnFunc.getFile(slug, extension, function(err,file){
+      loading.remove()
       console.log("file fetched", err, fileName, file)
-      makeSaveButton(fileName, file)
+      makeSaveButton(fileName, file, id, button)
     })
   }
   if ($("#"+fileName.split(".")[0]).length === 0){
-    $("#fileBox").append("<li id= '" + fileName.split(".")[0] + "' data-fileName='" + fileName + "'>" + fileName + "</li>").append(button);
-  }//put button somewhere
+    //$("#fileBox").append("<li id= '" + fileName.split(".")[0] + "' data-fileName='" + fileName + "'>" + fileName + "</li>").append(button);
+    currentView.handleMessage({
+      message: "shared File: " + slug + "." + extension + " ",
+      id: id,
+      handle: "shared",
+      button: button
+    })
+  }
+
 }
   //////
   // Delete Chat View
@@ -154,12 +173,9 @@ var makeDownloadButton = function(fileName){
 
     ndnFunc.joinRoom(chatChannel, makeDownloadButton, function(message){
       //console.log("on message",  message, $("#" + message.handle).length);
-      if ($("#" + message.handle).length === 0 ){
-        userList.append("<li id= '" + message.handle + "' data-username='" + message.handle + "'>" + message.handle + "</li>");
-      }
       self.handleMessage(message, true)
 
-    })
+    }, userList)
 
 
     // Change the title to the chat channel.
@@ -197,7 +213,12 @@ var makeDownloadButton = function(fileName){
         + "<span id='"+ message.id + "'class='username'>" + message.handle + "</span>"
         + message.message
         + "</li>");
+    if (message.button) {
+      message.button.innerText = "download"
+      messageEl.append(message.button)
+    };
     messageList.append(messageEl);
+
     messageList.listview('refresh');
 
     // Scroll to bottom of page
@@ -231,5 +252,9 @@ var makeDownloadButton = function(fileName){
     } else if (data.toPage[0] == pages.chat[0]) {
       currentView = new ChatView(event, data);
     }
+  })
+  $(window).unload(function(){
+    alert("hey")
+    ndnFunc.leaveRoom();
   });
 });
