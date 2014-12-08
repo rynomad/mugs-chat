@@ -9,3 +9,7 @@ css/screen.css
 img/icon.jpg
 img/pubnub-logo-red.png
 img/pw_pattern.png
+http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.css
+https://fonts.googleapis.com/css?family=Ubuntu:300,400,700,400italic
+http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.js
+http://code.jquery.com/jquery-1.8.2.min.js
