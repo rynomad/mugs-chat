@@ -5,145 +5,154 @@ var IO = require("ndn-io");
 require("setimmediate")
 
 
+exports.onHandleChosen = function(handle, chatListEl){
+  window.io = new IO(new gremlin(),{}, function onIOReady(){
+    io.gremlin.addConnection("ws://"+ location.hostname, function(id){
+      window.hostID = id;
+      var askForRoomInferests = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name(["?", "@", handle]))
+      io.gremlin.addRegisteredPrefix("?/", id)
+                .addRegisteredPrefix("%/", id)
+                .registerPrefix("@/"+ handle + "/%", id)
+                .addListener({prefix:"@/"+ handle + "/%", blocking:true}, function(interest, faceID){
+                  console.log("got inferest for room")
+                  var chatName = interest.name.get(-1).toEscapedString()
 
+                  var chatEl = $("<li><a href='#chatPage' data-channel-name='" + chatName + "'>"
+                        + chatName
+                        + "</a><a href='#delete' data-rel='dialog' data-channel-name='" + chatName + "'></a></li>");
+                  chatListEl.append(chatEl);
+                })
+                .handleInterest(askForRoomInferests.wireEncode().buffer, function(){}, true);
+    })
+  })
+}
+/*
+  /! - announcement prefix
+
+
+
+
+*/
+
+
+exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
+  window.onMessage = onMessage;
+  window.roomName = roomName;
+  window.chatRoom = io.createNamespace("@/"+roomName + "/" + handle, function onChatPubliherReady(err, data){
+    console.log(err, data);
+
+    window.sequence = 0;
+
+    chatRoom.publisher.serve("@/" + roomName + "/user/" + handle);
+    chatRoom.fetcher.setType("json")
+                    .setInterestLifetimeMilliseconds(1000)
+
+  })
+  window.hostFace = 0;
+  window.filebox = io.createNamespace("#/" + roomName, function(){
+    console.log("filebox ready")
+    filebox.publisher.serve("#/" + roomName)
+  })
+
+
+
+  io.gremlin.addConnectionListener("%/" + roomName + "/connect" , 100, function onNewMember(err, id){
+    console.log("got new connection", err, id)
+    io.gremlin.addRegisteredPrefix("!/", id)
+              .addRegisteredPrefix("@/"+ roomName, id)
+
+  }, function onMemberLeave(){
+    console.log("connection lost")
+  })
+  .addListener("!/@", function(interest, faceID){
+
+      console.log("got chat announce", interest.toUri())
+    var chatName = interest.name.getSubName(1);
+    console.log(chatName.toUri());
+    chatRoom.fetcher.setName(chatName)
+                    .get(function(err, message){
+                      if (!err){
+                        onMessage(message);
+                      }
+                    });
+  })
+  .addListener("!/#", function(interest, faceID){
+    var slug = interest.name.get(3).toEscapedString();
+    var extension = interest.name.get(4).toEscapedString();
+    if (typeof faceID === "number"){
+      io.gremlin.addRegisteredPrefix(interest.name.getSubName(1), faceID);
+    }
+    onFileAnnounce(slug, extension);
+  })
+  .addListener({prefix: "?/", blocking:true}, function(interest, faceID, unblock){
+    console.log("got interest for inferest")
+    var roomAnnounceName = interest.name.getSubName(1).append("%").append(roomName)
+    console.log("r", roomAnnounceName.toUri())
+    var roomInferest = new io.gremlin.ndn.Interest(roomAnnounceName)
+
+    io.gremlin.addRegisteredPrefix(roomAnnounceName.toUri(), 0);
+
+    io.gremlin.handleInterest(roomInferest.wireEncode().buffer, function(){}, true)
+  })
+  .registerPrefix("%/"+ roomName, 0)
+  .registerPrefix("?/", 0)
+
+}
 
 exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
   window.onMessage = onMessage;
-  window.io = new IO(new gremlin(),{}, function onReady(){
-    io.gremlin.addConnection("ws://129.82.138.231" , function(id){
-      console.log("add connection calback", id)
-      window.hostFace = id
-      window.sessionTime = Date.now();
-      window.announcementName = new io.gremlin.ndn.Name(["!" , roomName , "!" , window.handle]);
-      var announcement = new io.gremlin.ndn.Interest(announcementName.appendTimestamp(sessionTime));
-      announcement.setInterestLifetimeMilliseconds(20);
-      io.gremlin.addRegisteredPrefix(roomName, id)
-                .registerPrefix(roomName, id)
-                .registerPrefix("!/" + roomName, id)
-                .registerPrefix("@/" + handle, id)
-                .addRegisteredPrefix("@", id)
-                .addRegisteredPrefix("!/" + roomName, id)
-                .addRegisteredPrefix("#", id)
-                .addListener({prefix: "!/"+roomName, blocking:true}, function(interest, faceID, unblock){
-                  console.log("listener triggered")
-                  var type = interest.name.get(2).value
-                  if (type.length === 1){
-                    if (type[0] === 64){
-                      var chatMessageName = interest.name.getSubName(2)
-                      chatRoom.fetcher.setName(chatMessageName)
-                                      .setType("json")
-                                      .setInterestLifetimeMilliseconds(1000)
-                                      .get(function(err, message){
-                                        if (!err){
-                                          onMessage(message)
-                                        }
-                                      });
-                    } else if (type[0] === 35){
-                      var slug = interest.name.get(4).toEscapedString();
-                      var extension = interest.name.get(5).toEscapedString();
-                      onFileAnnounce(slug, extension);
-                      unblock();
-                    } else if (type[0] === 33){
-                      console.log("new member");
-                      var memhandle = interest.name.get(3).toEscapedString();
+  window.roomName = roomName
+  window.chatRoom = io.createNamespace("@/"+roomName + "/" + handle, function onChatPubliherReady(err, data){
+    console.log(err, data);
 
-                      var timeStamp = interest.name.get(-1).toTimestamp();
-                      console.log("newmember", memhandle, timeStamp, sessionTime)
-                      if ($("#" + memhandle).length === 0 ){
-                        userList.append("<li id= '" + memhandle + "' data-username='" + memhandle + "'>" + memhandle + "</li>");
-                        io.gremlin.handleInterest(announcement.wireEncode().buffer, function(){}, true)
-                        if (timeStamp >= sessionTime){
-                          onMessage({
-                            handle: roomName
-                            , message: memhandle + " has joined the room"
-                            , id: Date.now()
-                          })
-                        }
-                      }
+    window.sequence = 0;
 
-                    } else if (type[0] === 48){
-
-                      var memhandle = interest.name.get(3).toEscapedString();
-                      if ($("#" + memhandle).length > 0 ){
-                        $("#" + memhandle).remove();
-                        onMessage({
-                          handle: roomName
-                          , message: memhandle + " has left the room"
-                          , id: Date.now()
-                        })
-                      }
-                    }
-                  }
-
-                })
-
-                io.gremlin.handleInterest(announcement.wireEncode().buffer, function(){})
-
-      window.chatRoom = io.createNamespace("@/"+handle, function onChatPubliherReady(err, data){
-        console.log(err, data);
-
-        window.sequence = 0;
-
-        chatRoom.publisher.serve("@/"+handle + "/"+ roomName);
-
-        /*
-        var fetchNextMessage = function fetchNextMessage(err, message){
-          console.log("message fetch callback")
-          if(!err){
-            ++sequence;
-            onMessage(message);
-            console.log("incrementing", sequence)
-          }
-          var thisName = new io.gremlin.ndn.Name(roomName)
-          console.log("err:", err, chatRoom.fetcher.masterInterest.toUri());
-
-
-        }
-
-        var thisName = new io.gremlin.ndn.Name(roomName);
-        chatRoom.fetcher.setType("json")
-                        .setName(thisName.appendSequenceNumber(sequence))
-                        .setInterestLifetimeMilliseconds(400)
-                        .get(fetchNextMessage)
-
-  */
-      });
-
-
-      window.filebox = io.createNamespace("#/" + roomName, function(){
-        console.log("filebox ready")
-        filebox.publisher.serve("#/" + roomName)
-      } )
-    })
-
-
+    chatRoom.publisher.serve("@/" + roomName + "/user/" + handle);
+    chatRoom.fetcher.setType("json")
+                    .setInterestLifetimeMilliseconds(1000)
 
   })
-  /*
-  window.room = new NameSpace(roomName)
-  room.join(2, function(err, faceID){
-    console.log("new peer connection in the room", err, faceID)
+
+  window.filebox = io.createNamespace("#/" + roomName, function(){
+    console.log("filebox ready")
+    filebox.publisher.serve("#/" + roomName)
   })
-  .setDataType("json")
-  .subscribe(function(err, data){
-    if(!err){
-      onMessage(data)
-      //console.log(data)
+
+  filebox.publisher.serve()
+
+  io.gremlin.requestConnection("%/"+roomName + "/connect", function onConnectedToRoom(err, id){
+    console.log("connection?", id)
+    window.hostFace = id;
+    io.gremlin.registerPrefix("@/"+roomName + "/user/"+ handle, id)
+              .addRegisteredPrefix("!", id)
+              .addRegisteredPrefix("@/"+ roomName, id)
+              .addRegisteredPrefix("#/"+ roomName, id)
+  })
+  .addListener({prefix: "!/@", blocking:true}, function(interest, faceID){
+    console.log("got chat announce", interest.toUri())
+    var chatName = interest.name.getSubName(1);
+    chatRoom.fetcher.setName(chatName)
+                    .get(function(err, message){
+
+                      if (!err){
+                        console.log();
+                        onMessage(message);
+                      }
+                    });
+
+  })
+  .addListener({prefix: "!/#", blocking:true}, function(interest, faceID, unblock){
+    console.log("got file announce")
+    var slug = interest.name.get(3).toEscapedString();
+    var extension = interest.name.get(4).toEscapedString();
+    if (typeof faceID === "number"){
+      io.gremlin.addRegisteredPrefix(interest.name.getSubName(1), faceID);
     } else {
-      console.log(err)
+      unblock();
     }
+    onFileAnnounce(slug, extension);
   })
-
-  window.fileBox = room.IO("files")
-  console.log(room, fileBox)
-  fileBox.setDataType("file")
-         .listen(function(err, fileName){
-           //console.log("got file announce", fileName)
-           window.fileName = fileName
-           onFileAnnounce(fileName)
-         })
-         */
-}
+};
 
 exports.leaveRoom = function(){
   var announcementName = new io.gremlin.ndn.Name(["!" , roomName, "0", handle]);
@@ -162,7 +171,7 @@ exports.shareFile = function(file){
 
   })
 
-  var announcementName = new io.gremlin.ndn.Name(["!" , roomName]);
+  var announcementName = new io.gremlin.ndn.Name(["!"]);
   var announcement = new io.gremlin.ndn.Interest(announcementName.append(filebox.publisher.name));
   io.gremlin.registerPrefix(prefix, hostFace)
             .handleInterest(announcement.wireEncode().buffer,function(){console.log("hey you, file announced")});
@@ -181,7 +190,7 @@ exports.getFile = function(slug, extension, callback){
 }
 
 exports.chat = function(message){
-  var name = new io.gremlin.ndn.Name(["@",handle, roomName]);
+  var name = new io.gremlin.ndn.Name(["@",roomName,"user", handle]);
   console.log(name)
   var message = {
     handle: window.handle
@@ -194,12 +203,12 @@ exports.chat = function(message){
                     .publish(function onDataServeable(firstDataSegment){
                       console.log("heeeeeee")
                       onMessage(message);
-                      var announcementName = new io.gremlin.ndn.Name(["!",roomName])
+                      var announcementName = new io.gremlin.ndn.Name(["!"])
                       announcementName.append(name);
                       console.log(announcementName.toUri())
                       var announcementInterest = new io.gremlin.ndn.Interest(announcementName);
                       io.gremlin.handleInterest(announcementInterest.wireEncode().buffer, function(){"excecuted chat", sequence - 1}, true)
                     })
 
-}
+};
 module.exports = exports;

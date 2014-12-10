@@ -78,11 +78,12 @@ $(document).ready(function () {
       if(usernameInput.val() != '') {
         username = usernameInput.val();
 
-window.handle = username
+        window.handle = username
         localStorage["username"] = username;
 
 
         $.mobile.changePage(pages.chatList);
+
       }
     });
   };
@@ -92,6 +93,8 @@ window.handle = username
   ///////
   function ChatListView(event, data) {
     chatListEl.empty();
+
+    ndnFunc.onHandleChosen(handle, chatListEl)
     newChatButton.off('click');
     newChatButton.click(function (event) {
       if(chatRoomName.val() !== '') {
@@ -99,6 +102,7 @@ window.handle = username
         window.roomName = chatChannel;
 	console.log("chat list view click", pages.chat)
         $.mobile.changePage(pages.chat);
+
       }
     });
   };
@@ -166,20 +170,34 @@ var makeDownloadButton = function(slug, extension){
   function ChatView(event, data) {
     var self = this;
     console.log("chatView", event, data)
+    if (data.options && data.options.link) {
+
+      console.log()
+      chatChannel = data.options.link.attr('data-channel-name');
+
+      pages.chat.find("h1:first").text(chatChannel);
+      ndnFunc.joinRoom(chatChannel, makeDownloadButton, function(message){
+        self.handleMessage(message, true)
+      }, userList)
+    } else {
+
+      pages.chat.find("h1:first").text(chatChannel + " (Hosting)");
+      console.log("is this a creatorrr??")
+      ndnFunc.createRoom(chatChannel, makeDownloadButton, function(message){
+        //console.log("on message",  message, $("#" + message.handle).length);
+        self.handleMessage(message, true)
+
+      }, userList)
+    }
 
     users = [];
     messageList.empty();
     userList.empty();
 
-    ndnFunc.joinRoom(chatChannel, makeDownloadButton, function(message){
-      //console.log("on message",  message, $("#" + message.handle).length);
-      self.handleMessage(message, true)
 
-    }, userList)
 
 
     // Change the title to the chat channel.
-    pages.chat.find("h1:first").text(chatChannel);
 
     messageContent.off('keydown');
     messageContent.bind('keydown', function (event) {
