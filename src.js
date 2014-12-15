@@ -4,7 +4,7 @@ var dropkick = require('dropkick');
 var IO = require("ndn-io");
 require("setimmediate")
 
-
+window.Buffer = Buffer;
 exports.onHandleChosen = function(handle, chatListEl){
   window.io = new IO(new gremlin(),{}, function onIOReady(){
     io.gremlin.addConnection("ws://"+ location.hostname, function(id){
@@ -179,16 +179,17 @@ exports.shareFile = function(file){
 
 exports.getFile = function(slug, extension, callback){
   console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!filename", filebox.prefix.toUri())
+  var t1 = Date.now();
   filebox.fetcher.setType("file")
                  .setName("#/" + roomName +"/"+ slug +"/"+ extension)
                  .setInterestLifetimeMilliseconds(4000)
                  .get(function(err, data){
-                   console.log("file fetch callback", err, data);
+                   console.log("file fetch callback", err, data, data.size / (Date.now() - t1));
                    callback(err, data)
                  })//" + roomName + "/" + fileName, function(err, file){
     //console.log("got file?", err, file)
 }
-
+window.Buffer  = Buffer
 exports.chat = function(message){
   var name = new io.gremlin.ndn.Name(["@",roomName,"user", handle]);
   console.log(name)
