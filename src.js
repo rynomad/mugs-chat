@@ -4,6 +4,8 @@ var dropkick = require('dropkick');
 var IO = require("ndn-io");
 require("setimmediate")
 
+window.filesAware = []
+
 window.Buffer = Buffer;
 exports.onHandleChosen = function(handle, chatListEl){
   window.io = new IO(new gremlin(),{}, function onIOReady(){
@@ -26,13 +28,6 @@ exports.onHandleChosen = function(handle, chatListEl){
     })
   })
 }
-/*
-  /! - announcement prefix
-
-
-
-
-*/
 
 
 exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
@@ -49,11 +44,7 @@ exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
 
   })
   window.hostFace = 0;
-  window.filebox = io.createNamespace("#/" + roomName, function(){
-    console.log("filebox ready")
-    filebox.publisher.serve("#/" + roomName)
-  })
-
+  if (!window.filebox) openFileBox()
 
 
   io.gremlin.addConnectionListener("%/" + roomName + "/connect" , 100, function onNewMember(err, id){
@@ -77,11 +68,12 @@ exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
                     });
   })
   .addListener("!/#", function(interest, faceID){
-    var slug = interest.name.get(3).toEscapedString();
-    var extension = interest.name.get(4).toEscapedString();
+    var slug = interest.name.get(2).toEscapedString();
+    var extension = interest.name.get(3).toEscapedString();
     if (typeof faceID === "number"){
       io.gremlin.addRegisteredPrefix(interest.name.getSubName(1), faceID);
     }
+    filesAware.push({slug:slug,extension:extension})
     onFileAnnounce(slug, extension);
   })
   .addListener({prefix: "?/", blocking:true}, function(interest, faceID, unblock){
@@ -94,8 +86,37 @@ exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
 
     io.gremlin.handleInterest(roomInferest.wireEncode().buffer, function(){}, true)
   })
+  .addListener({prefix:"!/?", blocking:true}, function(interest, faceID, unblock){
+    console.log("got join room", userList, filesAware )
+    var response = new io.gremlin.ndn.Data(new io.gremlin.ndn.Name(interest.name), new io.gremlin.ndn.SignedInfo(), JSON.stringify(filesAware))
+    response.signedInfo.setFields();
+    response.sign(function(){
+
+      io.gremlin.interfaces.dispatch(response.wireEncode().buffer,[faceID])
+    }
+    )
+  })
   .registerPrefix("%/"+ roomName, 0)
   .registerPrefix("?/", 0)
+
+}
+
+function openFileBox(){
+
+  window.filebox = io.createNamespace("#", function(){
+    console.log("filebox ready")
+    filebox.publisher.serve("#")
+    if (!localStorage["fileList"]){
+      localStorage["fileList"] = "[]"
+    } else {
+      var fileList = JSON.parse(localStorage["fileList"])
+
+      for(var i = 0; i < fileList.length; i++){
+        filesAware.push(fileList[i])
+        announceFile(fileList[i].slug, fileList[i].extension, true);
+      }
+    }
+  })
 
 }
 
@@ -111,22 +132,52 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
     chatRoom.fetcher.setType("json")
                     .setInterestLifetimeMilliseconds(1000)
 
+
   })
 
-  window.filebox = io.createNamespace("#/" + roomName, function(){
-    console.log("filebox ready")
-    filebox.publisher.serve("#/" + roomName)
-  })
 
-  filebox.publisher.serve()
+  var count = {
+    onFace: 0
+    , onData : 0
+  }
 
   io.gremlin.requestConnection("%/"+roomName + "/connect", function onConnectedToRoom(err, id){
     console.log("connection?", id)
     window.hostFace = id;
+    if (!window.filebox) openFileBox()
     io.gremlin.registerPrefix("@/"+roomName + "/user/"+ handle, id)
               .addRegisteredPrefix("!", id)
               .addRegisteredPrefix("@/"+ roomName, id)
-              .addRegisteredPrefix("#/"+ roomName, id)
+              .addRegisteredPrefix("#", id)
+    var fileListInterest = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name("!/?"))
+    fileListInterest.setInterestLifetimeMilliseconds(1000)
+    count.onFace++
+    io.gremlin.handleInterest(fileListInterest.wireEncode().buffer, function(element, interest, arg3){
+      var d = new io.gremlin.ndn.Data()
+      if (element){
+        count.onData++
+        d.wireDecode(element)
+
+        console.log("file list?", count )
+        var files = JSON.parse(io.gremlin.ndn.DataUtils.toString(d.content))
+        var dup;
+        for (var i = 0; i < files.length; i++){
+          dup = false
+          for (var j =0; j < filesAware.length; j++){
+            if (files[i].slug == filesAware[j].slug && files[i].extension == filesAware[j].extension){
+              dup = true
+              break;
+            }
+          }
+          if (dup) {
+            continue;
+          } else {
+            filesAware.push(files[i])
+            onFileAnnounce(files[i].slug, files[i].extension)
+          };
+        }
+      }
+    }, true)
   })
   .addListener({prefix: "!/@", blocking:true}, function(interest, faceID){
     console.log("got chat announce", interest.toUri())
@@ -143,16 +194,35 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
   })
   .addListener({prefix: "!/#", blocking:true}, function(interest, faceID, unblock){
     console.log("got file announce")
-    var slug = interest.name.get(3).toEscapedString();
-    var extension = interest.name.get(4).toEscapedString();
+    var slug = interest.name.get(2).toEscapedString();
+    var extension = interest.name.get(3).toEscapedString();
     if (typeof faceID === "number"){
       io.gremlin.addRegisteredPrefix(interest.name.getSubName(1), faceID);
     } else {
       unblock();
     }
+    filesAware.push({slug:slug,extension:extension})
     onFileAnnounce(slug, extension);
   })
+  .addListener({prefix:"!/?", blocking:true}, function(interest, faceID, unblock){
+    console.log("got join room", userList, filesAware )
+
+  })
 };
+
+function announceFile(slug, extension, skipInsert){
+  var announcementName = new io.gremlin.ndn.Name(["!", "#", slug, extension]);
+  var announcement = new io.gremlin.ndn.Interest(announcementName);
+  io.gremlin.handleInterest(announcement.wireEncode().buffer,function(){console.log("hey you, file announced")});
+
+  if (hostFace) io.gremlin.registerPrefix(announcementName.getSubName(1), hostFace)
+  if (!skipInsert){
+    var insert = JSON.parse(localStorage["fileList"])
+    //console.log(fileList,"????????????")
+    insert.push({slug:slug,extension:extension});
+    localStorage["fileList"] = JSON.stringify(insert)
+  }
+}
 
 exports.leaveRoom = function(){
   var announcementName = new io.gremlin.ndn.Name(["!" , roomName, "0", handle]);
@@ -162,7 +232,7 @@ exports.leaveRoom = function(){
 exports.shareFile = function(file){
   var extension = file.name.substr(file.name.indexOf(".") + 1);
   var slug = file.name.substr(0, file.name.indexOf(".")).toLowerCase().replace(/-+/g, '').replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  var prefix = new io.gremlin.ndn.Name(["#",roomName, slug, extension ])
+  var prefix = new io.gremlin.ndn.Name(["#", slug, extension ])
   filebox.publisher
          .setName(prefix)
          .setToPublish(file)
@@ -170,18 +240,14 @@ exports.shareFile = function(file){
          .publish(function(err, data){
 
   })
-
-  var announcementName = new io.gremlin.ndn.Name(["!"]);
-  var announcement = new io.gremlin.ndn.Interest(announcementName.append(filebox.publisher.name));
-  io.gremlin.registerPrefix(prefix, hostFace)
-            .handleInterest(announcement.wireEncode().buffer,function(){console.log("hey you, file announced")});
+  announceFile(slug, extension)
 }
 
 exports.getFile = function(slug, extension, callback){
   console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!filename", filebox.prefix.toUri())
   var t1 = Date.now();
   filebox.fetcher.setType("file")
-                 .setName("#/" + roomName +"/"+ slug +"/"+ extension)
+                 .setName("#/" +  slug +"/"+ extension)
                  .setInterestLifetimeMilliseconds(4000)
                  .get(function(err, data){
                    console.log("file fetch callback", err, data, data.size / (Date.now() - t1));
@@ -190,6 +256,7 @@ exports.getFile = function(slug, extension, callback){
     //console.log("got file?", err, file)
 }
 window.Buffer  = Buffer
+
 exports.chat = function(message){
   var name = new io.gremlin.ndn.Name(["@",roomName,"user", handle]);
   console.log(name)

@@ -138,13 +138,13 @@ var makeDownloadButton = function(slug, extension){
     })
   }
   if ($("#"+fileName.split(".")[0]).length === 0){
-    //$("#fileBox").append("<li id= '" + fileName.split(".")[0] + "' data-fileName='" + fileName + "'>" + fileName + "</li>").append(button);
-    currentView.handleMessage({
+    $("#fileBox").append("<li>" + slug + "." + extension + "</li>").append(button);
+    /*currentView.handleMessage({
       message: "shared File: " + slug + "." + extension + " ",
       id: id,
       handle: "shared",
       button: button
-    })
+    })*/
   }
 
 }
