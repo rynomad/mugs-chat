@@ -8,29 +8,38 @@ window.filesAware = []
 
 window.Buffer = Buffer;
 exports.onHandleChosen = function(handle, chatListEl){
-  window.io = new IO(new gremlin(),{}, function onIOReady(){
-    io.gremlin.addConnection("ws://"+ location.hostname, function(id){
-      window.hostID = id;
-      var askForRoomInferests = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name(["?", "@", handle]))
-      io.gremlin.addRegisteredPrefix("?/", id)
-                .addRegisteredPrefix("%/", id)
-                .registerPrefix("@/"+ handle + "/%", id)
-                .addListener({prefix:"@/"+ handle + "/%", blocking:true}, function(interest, faceID){
-                  console.log("got inferest for room")
-                  var chatName = interest.name.get(-1).toEscapedString()
+  if (!window.io){
+    window.io = new IO(new gremlin(),{}, function onIOReady(){
+      io.gremlin.addConnection("ws://"+ location.hostname, function(id){
+        window.hostID = id;
 
-                  var chatEl = $("<li><a href='#chatPage' data-channel-name='" + chatName + "'>"
-                        + chatName
-                        + "</a><a href='#delete' data-rel='dialog' data-channel-name='" + chatName + "'></a></li>");
-                  chatListEl.append(chatEl);
-                })
-                .handleInterest(askForRoomInferests.wireEncode().buffer, function(){}, true);
+        var askForRoomInferests = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name(["?", "@", handle]));
+        io.gremlin.addRegisteredPrefix("?/", id)
+                  .addRegisteredPrefix("%/", id)
+                  .registerPrefix("@/"+ handle + "/%", id)
+                  .addListener({prefix:"@/"+ handle + "/%", blocking:true}, function(interest, faceID){
+                    console.log("got inferest for room", chatListEl)
+                    var chatName = interest.name.get(-1).toEscapedString()
+
+                    var chatEl = $("<li><a href='#chatPage' data-channel-name='" + chatName + "'>"
+                          + chatName
+                          + "</a><a href='#delete' data-rel='dialog' data-channel-name='" + chatName + "'></a></li>");
+                    chatListEl.append(chatEl);
+                  })
+                  .handleInterest(askForRoomInferests.wireEncode().buffer, function(){}, true);
+      })
     })
-  })
+  } else {
+
+    var askForRoomInferests = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name(["?", "@", handle]));
+    chatListEl.empty();
+    window.io.gremlin.handleInterest(askForRoomInferests.wireEncode().buffer, function(){}, true)
+  }
 }
 
 
 exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
+  window.onFileAnnounce = onFileAnnounce;
   window.onMessage = onMessage;
   window.roomName = roomName;
   window.chatRoom = io.createNamespace("@/"+roomName + "/" + handle, function onChatPubliherReady(err, data){
@@ -73,8 +82,7 @@ exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
     if (typeof faceID === "number"){
       io.gremlin.addRegisteredPrefix(interest.name.getSubName(1), faceID);
     }
-    filesAware.push({slug:slug,extension:extension})
-    onFileAnnounce(slug, extension);
+    becomeAwareOfFiles([{slug:slug,extension:extension}])
   })
   .addListener({prefix: "?/", blocking:true}, function(interest, faceID, unblock){
     console.log("got interest for inferest")
@@ -111,8 +119,8 @@ function openFileBox(){
     } else {
       var fileList = JSON.parse(localStorage["fileList"])
 
+      becomeAwareOfFiles(fileList)
       for(var i = 0; i < fileList.length; i++){
-        filesAware.push(fileList[i])
         announceFile(fileList[i].slug, fileList[i].extension, true);
       }
     }
@@ -120,7 +128,30 @@ function openFileBox(){
 
 }
 
+function becomeAwareOfFiles(files){
+  var dup;
+  console.log(files)
+  for (var i = 0; i < files.length; i++){
+    dup = false;
+    for (var j =0; j < filesAware.length; j++){
+      if (files[i].slug == filesAware[j].slug && files[i].extension == filesAware[j].extension){
+        dup = true
+        break;
+      }
+    }
+    console.log(dup)
+    if (dup) {
+      continue;
+    } else {
+      filesAware.push(files[i])
+      onFileAnnounce(files[i].slug, files[i].extension)
+    };
+  }
+}
+
 exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
+
+    window.onFileAnnounce = onFileAnnounce;
   window.onMessage = onMessage;
   window.roomName = roomName
   window.chatRoom = io.createNamespace("@/"+roomName + "/" + handle, function onChatPubliherReady(err, data){
@@ -160,22 +191,7 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
 
         console.log("file list?", count )
         var files = JSON.parse(io.gremlin.ndn.DataUtils.toString(d.content))
-        var dup;
-        for (var i = 0; i < files.length; i++){
-          dup = false
-          for (var j =0; j < filesAware.length; j++){
-            if (files[i].slug == filesAware[j].slug && files[i].extension == filesAware[j].extension){
-              dup = true
-              break;
-            }
-          }
-          if (dup) {
-            continue;
-          } else {
-            filesAware.push(files[i])
-            onFileAnnounce(files[i].slug, files[i].extension)
-          };
-        }
+        becomeAwareOfFiles(files)
       }
     }, true)
   })
@@ -201,8 +217,9 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
     } else {
       unblock();
     }
-    filesAware.push({slug:slug,extension:extension})
-    onFileAnnounce(slug, extension);
+    becomeAwareOfFiles([{slug:slug, extension:extension}])
+    //filesAware.push({slug:slug,extension:extension})
+    //onFileAnnounce(slug, extension);
   })
   .addListener({prefix:"!/?", blocking:true}, function(interest, faceID, unblock){
     console.log("got join room", userList, filesAware )
@@ -244,12 +261,17 @@ exports.shareFile = function(file){
 }
 
 exports.getFile = function(slug, extension, callback){
-  console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!filename", filebox.prefix.toUri())
   var t1 = Date.now();
   filebox.fetcher.setType("file")
                  .setName("#/" +  slug +"/"+ extension)
                  .setInterestLifetimeMilliseconds(4000)
                  .get(function(err, data){
+                   if (!err){
+                     io.steward("#/" +  slug +"/"+ extension, function(err, uri){
+                       console.log(err, uri, "?????????");
+                       announceFile(slug, extension)
+                     })
+                   }
                    console.log("file fetch callback", err, data, data.size / (Date.now() - t1));
                    callback(err, data)
                  })//" + roomName + "/" + fileName, function(err, file){

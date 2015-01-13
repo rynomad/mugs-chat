@@ -138,7 +138,7 @@ var makeDownloadButton = function(slug, extension){
     })
   }
   if ($("#"+fileName.split(".")[0]).length === 0){
-    $("#fileBox").append("<li>" + slug + "." + extension + "</li>").append(button);
+    $("#fileBox").append("<li class="+slug+">" + slug + "." + extension + "</li>").append(button);
     /*currentView.handleMessage({
       message: "shared File: " + slug + "." + extension + " ",
       id: id,

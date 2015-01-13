@@ -6124,7 +6124,7 @@ var makeDownloadButton = function(slug, extension){
     })
   }
   if ($("#"+fileName.split(".")[0]).length === 0){
-    $("#fileBox").append("<li>" + slug + "." + extension + "</li>").append(button);
+    $("#fileBox").append("<li class="+slug+">" + slug + "." + extension + "</li>").append(button);
     /*currentView.handleMessage({
       message: "shared File: " + slug + "." + extension + " ",
       id: id,
@@ -43248,7 +43248,7 @@ Interfaces.prototype.transports = {};
 Interfaces.List = function(){
   this.head = null;
   this.size = 0;
-  this.index = 0
+  this.index = 0;
   return this;
 };
 
@@ -43256,7 +43256,7 @@ Interfaces.ListNode = function (face, next){
   this.next = next;
   this.face = face;
   return this;
-}
+};
 
 Interfaces.List.prototype.addFace = function (face){
   face.id = this.index;
@@ -43275,7 +43275,7 @@ Interfaces.List.prototype.addFace = function (face){
   this.index++;
 
   return face.id;
-}
+};
 
 Interfaces.List.prototype.removeFace = function(id){
   var curr = this.head;
@@ -43286,7 +43286,7 @@ Interfaces.List.prototype.removeFace = function(id){
     curr.next = curr.next.next;
     this.size--;
   }
-}
+};
 
 Interfaces.List.prototype.dispatchByIds = function (idArray, buffer){
   var id, curr = this.head;
@@ -43311,7 +43311,7 @@ Interfaces.List.prototype.get = function(id){
   } else {
     return null;
   }
-}
+};
 
 /**Install a transport Class to the Interfaces manager. If the Class has a Listener function, the Listener will be invoked
  *@param {Transport} Transport a Transport Class matching the Abstract Transport API
@@ -43908,7 +43908,7 @@ Repository.installNDN = function(NDN){
 Repository.prototype.getElement = function(repoEntry, callback){
   this.db.get(repoEntry.uri, function(err, data){
    if (!err && !Buffer.isBuffer(data)){
-     console.log("got element", data, err)
+     //console.log("got element", data, err)
      data = new Buffer(data);
    }
    callback(data);
@@ -46646,7 +46646,6 @@ Fetcher.prototype.getParts = function(uri, interestLifetimeMilliseconds, callbac
       segmentsRetrieved++;
       if (segmentsRetrieved === totalSegments){
         debug.debug("got all segments");
-        console.log()
         callback(null, contentArray);
       }
     } else {
@@ -46831,6 +46830,42 @@ IO.prototype.handleData = function(element, faceID){
   }
 };
 
+IO.prototype.steward = function(uri, callback){
+  var Self = this;
+  var name = new ndn.Name(uri);
+  name.appendSegment(0);
+  var interest = new ndn.Interest(name);
+  interest.setInterestLifetimeMilliseconds(1000);
+  var fetched = 0;
+  this.fetchAllSegments(interest, function onPacket(dataPacket, dataObject, finalBlockID){
+    fetched++;
+    Self.publisher.repo.insert(dataPacket, dataObject);
+    if (fetched === finalBlockID + 1){
+      callback(null, uri)
+      Self.gremlin.addListener({
+        prefix: uri,
+        blocking: true
+      }, function stewardListener(interest, faceID, unblock){
+        Self.repo.check(interest,  function(err, element){
+          if(!err){
+            if (typeof faceID === "function"){
+              console.log(element, interest);
+              setTimeout(faceID, 0 ,element, interest);
+            } else {
+              Self.gremlin.interfaces.dispatch(element, [faceID]);
+            }
+          } else {
+            unblock();
+          }
+        });
+      });
+    }
+  }, function onTimeout(){
+    callback("timeout", null)
+    console.log("steward couldn't get data");
+  });
+};
+
 /** fetch all segments of any data, excecuting the callback with each packet
  *@param {Interest} firstSegmentInterest the interest for the first segment of a data item
  *@param {function} onEachData function to call with each incoming data packet, recieves the raw packet, the ndn.Data object, and the finalBlockID of the item
@@ -46875,7 +46910,7 @@ IO.prototype.fetchAllSegments = function(firstSegmentInterest, onEachData, onTim
       var data = new ndn.Data();
       data.wireDecode(dataPacket);
       finalBlockID = finalBlockID || data.signedInfo.getFinalBlockID().toSegment();
-      onEachData(null, data, finalBlockID);
+      onEachData(dataPacket, data, finalBlockID);
 
       interestsInFlight--;
 
@@ -46904,7 +46939,7 @@ IO.prototype.fetchAllSegments = function(firstSegmentInterest, onEachData, onTim
               i = finalSegmentNumber;
             }
 
-              Self.gremlin.handleInterest(p, callback);
+            Self.gremlin.handleInterest(p, callback);
           }
         }
       }
@@ -47080,7 +47115,7 @@ Publisher.prototype.publishFile = function(callback){
           Self.repo.check(interest, function(err, element){
             if(!err){
               if (typeof faceID === "function"){
-                console.log(element, interest)
+                console.log(element, interest);
                 setTimeout(faceID, 0 ,element, interest);
               } else {
                 Self.gremlin.interfaces.dispatch(element, [faceID]);
@@ -47092,7 +47127,7 @@ Publisher.prototype.publishFile = function(callback){
         });
         console.log(Self.toPublish.size / (Date.now() - t1));
         callback(firstData);
-      };
+      }
     });
     //console.log("thisCrash?")
     //console.log("thisCrash>", segment,  length)
@@ -47180,6 +47215,13 @@ Publisher.prototype.publishString = function(){
     , firstData
     , Self = this;
 
+  function publishSigned(data){
+    debug.debug("inserting %s into contentStore", d.name.toUri());
+    var element = data.wireEncode().buffer;
+    Self.repo.insert(element, data);
+    Self.gremlin.handleData(element, -1);
+  }
+
   debug.debug("publishString %", this.name.toUri());
   while (this.toPublish.length > 0){
     chunks.push(this.toPublish.substr(0,8000));
@@ -47196,12 +47238,7 @@ Publisher.prototype.publishString = function(){
     } else{
       d.signedInfo.setFinalBlockID(new ndn.Name.Component(ndn.Name.Component.fromNumberWithMarker(length -1, 0x00)));
     }
-    d.sign(function(data){
-      debug.debug("inserting %s into contentStore", d.name.toUri());
-      var element = data.wireEncode().buffer;
-      Self.repo.insert(element, data);
-      Self.gremlin.handleData(element, -1);
-    });
+    d.sign(publishSigned);
     if (i === 0){
       firstData = d;
     }
@@ -47249,29 +47286,38 @@ window.filesAware = []
 
 window.Buffer = Buffer;
 exports.onHandleChosen = function(handle, chatListEl){
-  window.io = new IO(new gremlin(),{}, function onIOReady(){
-    io.gremlin.addConnection("ws://"+ location.hostname, function(id){
-      window.hostID = id;
-      var askForRoomInferests = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name(["?", "@", handle]))
-      io.gremlin.addRegisteredPrefix("?/", id)
-                .addRegisteredPrefix("%/", id)
-                .registerPrefix("@/"+ handle + "/%", id)
-                .addListener({prefix:"@/"+ handle + "/%", blocking:true}, function(interest, faceID){
-                  console.log("got inferest for room")
-                  var chatName = interest.name.get(-1).toEscapedString()
+  if (!window.io){
+    window.io = new IO(new gremlin(),{}, function onIOReady(){
+      io.gremlin.addConnection("ws://"+ location.hostname, function(id){
+        window.hostID = id;
 
-                  var chatEl = $("<li><a href='#chatPage' data-channel-name='" + chatName + "'>"
-                        + chatName
-                        + "</a><a href='#delete' data-rel='dialog' data-channel-name='" + chatName + "'></a></li>");
-                  chatListEl.append(chatEl);
-                })
-                .handleInterest(askForRoomInferests.wireEncode().buffer, function(){}, true);
+        var askForRoomInferests = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name(["?", "@", handle]));
+        io.gremlin.addRegisteredPrefix("?/", id)
+                  .addRegisteredPrefix("%/", id)
+                  .registerPrefix("@/"+ handle + "/%", id)
+                  .addListener({prefix:"@/"+ handle + "/%", blocking:true}, function(interest, faceID){
+                    console.log("got inferest for room", chatListEl)
+                    var chatName = interest.name.get(-1).toEscapedString()
+
+                    var chatEl = $("<li><a href='#chatPage' data-channel-name='" + chatName + "'>"
+                          + chatName
+                          + "</a><a href='#delete' data-rel='dialog' data-channel-name='" + chatName + "'></a></li>");
+                    chatListEl.append(chatEl);
+                  })
+                  .handleInterest(askForRoomInferests.wireEncode().buffer, function(){}, true);
+      })
     })
-  })
+  } else {
+
+    var askForRoomInferests = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name(["?", "@", handle]));
+    chatListEl.empty();
+    window.io.gremlin.handleInterest(askForRoomInferests.wireEncode().buffer, function(){}, true)
+  }
 }
 
 
 exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
+  window.onFileAnnounce = onFileAnnounce;
   window.onMessage = onMessage;
   window.roomName = roomName;
   window.chatRoom = io.createNamespace("@/"+roomName + "/" + handle, function onChatPubliherReady(err, data){
@@ -47314,8 +47360,7 @@ exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
     if (typeof faceID === "number"){
       io.gremlin.addRegisteredPrefix(interest.name.getSubName(1), faceID);
     }
-    filesAware.push({slug:slug,extension:extension})
-    onFileAnnounce(slug, extension);
+    becomeAwareOfFiles([{slug:slug,extension:extension}])
   })
   .addListener({prefix: "?/", blocking:true}, function(interest, faceID, unblock){
     console.log("got interest for inferest")
@@ -47352,8 +47397,8 @@ function openFileBox(){
     } else {
       var fileList = JSON.parse(localStorage["fileList"])
 
+      becomeAwareOfFiles(fileList)
       for(var i = 0; i < fileList.length; i++){
-        filesAware.push(fileList[i])
         announceFile(fileList[i].slug, fileList[i].extension, true);
       }
     }
@@ -47361,7 +47406,30 @@ function openFileBox(){
 
 }
 
+function becomeAwareOfFiles(files){
+  var dup;
+  console.log(files)
+  for (var i = 0; i < files.length; i++){
+    dup = false;
+    for (var j =0; j < filesAware.length; j++){
+      if (files[i].slug == filesAware[j].slug && files[i].extension == filesAware[j].extension){
+        dup = true
+        break;
+      }
+    }
+    console.log(dup)
+    if (dup) {
+      continue;
+    } else {
+      filesAware.push(files[i])
+      onFileAnnounce(files[i].slug, files[i].extension)
+    };
+  }
+}
+
 exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
+
+    window.onFileAnnounce = onFileAnnounce;
   window.onMessage = onMessage;
   window.roomName = roomName
   window.chatRoom = io.createNamespace("@/"+roomName + "/" + handle, function onChatPubliherReady(err, data){
@@ -47401,22 +47469,7 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
 
         console.log("file list?", count )
         var files = JSON.parse(io.gremlin.ndn.DataUtils.toString(d.content))
-        var dup;
-        for (var i = 0; i < files.length; i++){
-          dup = false
-          for (var j =0; j < filesAware.length; j++){
-            if (files[i].slug == filesAware[j].slug && files[i].extension == filesAware[j].extension){
-              dup = true
-              break;
-            }
-          }
-          if (dup) {
-            continue;
-          } else {
-            filesAware.push(files[i])
-            onFileAnnounce(files[i].slug, files[i].extension)
-          };
-        }
+        becomeAwareOfFiles(files)
       }
     }, true)
   })
@@ -47442,8 +47495,9 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
     } else {
       unblock();
     }
-    filesAware.push({slug:slug,extension:extension})
-    onFileAnnounce(slug, extension);
+    becomeAwareOfFiles([{slug:slug, extension:extension}])
+    //filesAware.push({slug:slug,extension:extension})
+    //onFileAnnounce(slug, extension);
   })
   .addListener({prefix:"!/?", blocking:true}, function(interest, faceID, unblock){
     console.log("got join room", userList, filesAware )
@@ -47485,12 +47539,17 @@ exports.shareFile = function(file){
 }
 
 exports.getFile = function(slug, extension, callback){
-  console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!filename", filebox.prefix.toUri())
   var t1 = Date.now();
   filebox.fetcher.setType("file")
                  .setName("#/" +  slug +"/"+ extension)
                  .setInterestLifetimeMilliseconds(4000)
                  .get(function(err, data){
+                   if (!err){
+                     io.steward("#/" +  slug +"/"+ extension, function(err, uri){
+                       console.log(err, uri, "?????????");
+                       announceFile(slug, extension)
+                     })
+                   }
                    console.log("file fetch callback", err, data, data.size / (Date.now() - t1));
                    callback(err, data)
                  })//" + roomName + "/" + fileName, function(err, file){
