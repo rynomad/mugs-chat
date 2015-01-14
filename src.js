@@ -4,6 +4,34 @@ var dropkick = require('dropkick');
 var IO = require("ndn-io");
 require("setimmediate")
 
+
+
+function becomeAwareOfUsers(users, userList){
+  var toReturn = [];
+
+    var dup = false;
+  for(var i = 0; i < users.length; i++){
+    console.log(users[i])
+    var children = userList.children();
+    for (var j = 0; j < children.length; j++){
+      if (users[i] === children[j].innerText){
+        dup = true;
+      }
+      console.log(toReturn, children[j].innerText)
+    }
+    console.log(!dup)
+    if (!dup){
+      toReturn.push(users[i])
+      var el = document.createElement("li");
+      el.innerText = users[i]
+      userList.append(el);
+    }
+  }
+
+  toReturn = toReturn.concat(users)
+  return toReturn;
+}
+
 window.filesAware = []
 
 window.Buffer = Buffer;
@@ -42,6 +70,8 @@ exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
   window.onFileAnnounce = onFileAnnounce;
   window.onMessage = onMessage;
   window.roomName = roomName;
+  console.log(handle, userList)
+  becomeAwareOfUsers([handle], userList)
   window.chatRoom = io.createNamespace("@/"+roomName + "/" + handle, function onChatPubliherReady(err, data){
     console.log(err, data);
 
@@ -94,10 +124,14 @@ exports.createRoom = function(roomName, onFileAnnounce, onMessage, userList){
 
     io.gremlin.handleInterest(roomInferest.wireEncode().buffer, function(){}, true)
   })
-  .addListener({prefix:"!/?", blocking:true}, function(interest, faceID, unblock){
-    console.log("got join room", userList, filesAware )
-    var response = new io.gremlin.ndn.Data(new io.gremlin.ndn.Name(interest.name), new io.gremlin.ndn.SignedInfo(), JSON.stringify(filesAware))
+  .addListener({prefix:"!/?"}, function(interest, faceID, unblock){
+    console.log("got join room", userList, filesAware , interest.toUri())
+    var handle = interest.name.get(2).toEscapedString();
+    var users = becomeAwareOfUsers([handle], userList);
+    var response = new io.gremlin.ndn.Data(new io.gremlin.ndn.Name(interest.name), new io.gremlin.ndn.SignedInfo(), JSON.stringify({files:filesAware, users:users}))
     response.signedInfo.setFields();
+
+
     response.sign(function(){
 
       io.gremlin.interfaces.dispatch(response.wireEncode().buffer,[faceID])
@@ -177,10 +211,13 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
     window.hostFace = id;
     if (!window.filebox) openFileBox()
     io.gremlin.registerPrefix("@/"+roomName + "/user/"+ handle, id)
+              .registerPrefix("!/?", id)
               .addRegisteredPrefix("!", id)
               .addRegisteredPrefix("@/"+ roomName, id)
               .addRegisteredPrefix("#", id)
-    var fileListInterest = new io.gremlin.ndn.Interest(new io.gremlin.ndn.Name("!/?"))
+    var initName = new io.gremlin.ndn.Name("!/?")
+    initName.append(handle);
+    var fileListInterest = new io.gremlin.ndn.Interest(initName)
     fileListInterest.setInterestLifetimeMilliseconds(1000)
     count.onFace++
     io.gremlin.handleInterest(fileListInterest.wireEncode().buffer, function(element, interest, arg3){
@@ -190,8 +227,10 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
         d.wireDecode(element)
 
         console.log("file list?", count )
-        var files = JSON.parse(io.gremlin.ndn.DataUtils.toString(d.content))
-        becomeAwareOfFiles(files)
+        var obj = JSON.parse(io.gremlin.ndn.DataUtils.toString(d.content))
+        console.log(obj)
+        becomeAwareOfFiles(obj.files)
+        becomeAwareOfUsers(obj.users, userList)
       }
     }, true)
   })
@@ -200,7 +239,7 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
     var chatName = interest.name.getSubName(1);
     chatRoom.fetcher.setName(chatName)
                     .get(function(err, message){
-
+                      console.log(chatName.toUri(), err, message)
                       if (!err){
                         console.log();
                         onMessage(message);
@@ -222,6 +261,8 @@ exports.joinRoom = function(roomName, onFileAnnounce, onMessage, userList){
     //onFileAnnounce(slug, extension);
   })
   .addListener({prefix:"!/?", blocking:true}, function(interest, faceID, unblock){
+    var handle = interest.name.get(2).toEscapedString();
+    becomeAwareOfUsers([handle], userList)
     console.log("got join room", userList, filesAware )
 
   })
@@ -288,7 +329,7 @@ exports.chat = function(message){
     , id : Date.now()
   }
   chatRoom.publisher.setName(name.appendSequenceNumber(sequence++))
-                    .setFreshnessMilliseconds(60 * 60 * 1000)
+                    .setFreshnessMilliseconds(12000)
                     .setToPublish(message)
                     .publish(function onDataServeable(firstDataSegment){
                       console.log("heeeeeee")
